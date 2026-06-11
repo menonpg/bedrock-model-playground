@@ -69,6 +69,16 @@ export default {
           converseBody.system = [{ text: system }];
         }
         
+        // NOTE: Data retention mode for Claude Fable 5 must be set at account level
+        // via the Bedrock Control Plane API, NOT per-request.
+        // See: https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html
+        // 
+        // To enable Fable 5:
+        // curl -X PUT https://bedrock.us-east-1.amazonaws.com/data-retention \
+        //   --aws-sigv4 "aws:amz:us-east-1:bedrock" \
+        //   -H "Content-Type: application/json" \
+        //   -d '{ "mode": "provider_data_share" }'
+        
         const response = await aws.fetch(bedrockUrl, {
           method: 'POST',
           headers: {
