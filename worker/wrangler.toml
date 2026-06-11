@@ -1,0 +1,11 @@
+name = "bedrock-proxy"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables - set via `wrangler secret put`
+# Run:
+#   wrangler secret put AWS_ACCESS_KEY_ID
+#   wrangler secret put AWS_SECRET_ACCESS_KEY
+
+[vars]
+AWS_REGION = "us-east-1"

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bedrock Model Playground</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface-hover: #334155;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #475569;
+            --radius: 8px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        header h1 span { color: var(--primary); }
+
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            background: var(--primary);
+            color: white;
+            font-weight: 500;
+        }
+
+        .badge.new { background: var(--success); }
+
+        main {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            height: calc(100vh - 60px);
+        }
+
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .model-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .model-item {
+            padding: 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .model-item:hover {
+            border-color: var(--primary);
+            background: var(--surface-hover);
+        }
+
+        .model-item.selected {
+            border-color: var(--primary);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .model-item .name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .model-item .meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            gap: 1rem;
+        }
+
+        .prompt-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .prompt-section label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        textarea {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            padding: 1rem;
+            font-size: 0.9rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        button:hover { background: var(--primary-hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .preset-select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+        }
+
+        .responses {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1rem;
+            overflow-y: auto;
+        }
+
+        .response-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .response-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .response-header .model-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .response-header .stats {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .response-body {
+            padding: 1rem;
+            flex: 1;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+        }
+
+        .response-body.loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+        }
+
+        .response-body.error {
+            color: var(--error);
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .fallback-notice {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid var(--warning);
+            border-radius: var(--radius);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.8rem;
+            color: var(--warning);
+            margin-top: 0.5rem;
+        }
+
+        .info-panel {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .info-panel h4 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .info-panel p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .checkbox-item:hover {
+            border-color: var(--primary);
+        }
+
+        .checkbox-item.checked {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: var(--primary);
+        }
+
+        .checkbox-item input {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            .responses {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>
+            <span>⚡</span> Bedrock Model Playground
+            <span class="badge new">Claude Fable 5</span>
+        </h1>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">
+                Fraunhofer CMA / Medimergent
+            </span>
+        </div>
+    </header>
+
+    <main>
+        <aside class="sidebar">
+            <h3>Select Models to Compare</h3>
+            <div class="checkbox-group" id="modelCheckboxes">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="info-panel">
+                <h4>About Claude Fable 5</h4>
+                <p>
+                    Anthropic's first public Mythos-class model. State-of-the-art on benchmarks,
+                    with safeguards that fall back to Opus 4.8 for sensitive topics.
+                </p>
+                <p style="margin-top: 0.5rem;">
+                    <strong>Pricing:</strong> $10 in / $50 out per 1M tokens
+                </p>
+            </div>
+        </aside>
+
+        <section class="workspace">
+            <div class="prompt-section">
+                <label for="systemPrompt">System Prompt</label>
+                <textarea id="systemPrompt" placeholder="You are a helpful assistant...">You are Carmen, a compassionate clinical trials assistant. Respond with empathy while providing accurate medical information. If unsure, recommend speaking with a clinician.</textarea>
+            </div>
+
+            <div class="prompt-section">
+                <label for="userPrompt">User Message</label>
+                <textarea id="userPrompt" placeholder="Enter your test prompt...">I just got my test results back and I'm really scared. The doctor said something about my white blood cell count being abnormal. What does that mean? Am I going to be okay?</textarea>
+            </div>
+
+            <div class="controls">
+                <button id="sendBtn" onclick="runComparison()">
+                    ⚡ Compare Models
+                </button>
+                <select class="preset-select" id="presetSelect" onchange="loadPreset(this.value)">
+                    <option value="">Load test scenario...</option>
+                    <option value="anxious">Anxious patient - test results</option>
+                    <option value="elderly">Confused elderly patient</option>
+                    <option value="frustrated">Frustrated patient - insurance</option>
+                    <option value="caregiver">Caregiver asking questions</option>
+                    <option value="technical">Technical medical question</option>
+                </select>
+            </div>
+
+            <div class="responses" id="responsesContainer">
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <p>Select models and click "Compare Models" to see responses side-by-side</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Configuration - UPDATE THIS after deploying the Cloudflare Worker
+        const CONFIG = {
+            workerUrl: 'https://bedrock-proxy.yourdomain.workers.dev', // TODO: Update
+            models: [
+                {
+                    id: 'anthropic.claude-fable-5',
+                    name: 'Claude Fable 5',
+                    badge: 'NEW',
+                    pricing: '$10 in / $50 out',
+                    note: 'Mythos-class with safeguards'
+                },
+                {
+                    id: 'anthropic.claude-opus-4.8',
+                    name: 'Claude Opus 4.8',
+                    badge: null,
+                    pricing: '$15 in / $75 out',
+                    note: 'Flagship model'
+                },
+                {
+                    id: 'anthropic.claude-haiku-4.5',
+                    name: 'Claude Haiku 4.5',
+                    badge: null,
+                    pricing: '$0.80 in / $4 out',
+                    note: 'Fast & cost-efficient'
+                },
+                {
+                    id: 'meta.llama3-1-70b-instruct-v1:0',
+                    name: 'Llama 3.1 70B',
+                    badge: null,
+                    pricing: '$2.65 in / $3.50 out',
+                    note: 'Meta open weights'
+                }
+            ]
+        };
+
+        const presets = {
+            anxious: {
+                system: "You are Carmen, a compassionate clinical trials assistant. Respond with empathy while providing accurate medical information. If unsure, recommend speaking with a clinician.",
+                user: "I just got my test results back and I'm really scared. The doctor said something about my white blood cell count being abnormal. What does that mean? Am I going to be okay?"
+            },
+            elderly: {
+                system: "You are Carmen, a patient and clear clinical assistant. Use simple language, avoid jargon, and be willing to repeat or rephrase information.",
+                user: "My grandson set up this computer thing for me. I'm supposed to take my pills but I can't remember which ones are for the morning and which are for night. The bottles all look the same to me."
+            },
+            frustrated: {
+                system: "You are Carmen, a clinical trials assistant. Remain calm and helpful even with frustrated patients. Acknowledge their feelings while providing useful guidance.",
+                user: "This is ridiculous! I've been on hold with my insurance for 2 hours and they say my trial medication isn't covered. I thought this was supposed to be a free trial! What's going on?"
+            },
+            caregiver: {
+                system: "You are Carmen, a supportive clinical assistant. When speaking with caregivers, acknowledge the emotional burden of caregiving while providing clear medical information.",
+                user: "Hi, I'm asking on behalf of my mother. She was just enrolled in the trial but she's been having some side effects - headaches and she's more tired than usual. Is this normal? Should I be worried?"
+            },
+            technical: {
+                system: "You are Carmen, a knowledgeable clinical trials assistant. Provide accurate medical information appropriate for the user's apparent level of medical literacy.",
+                user: "Can you explain the mechanism of action for the immunotherapy drug being used in this trial? I'm trying to understand how checkpoint inhibitors interact with PD-L1 expression."
+            }
+        };
+
+        let selectedModels = new Set(['anthropic.claude-fable-5', 'anthropic.claude-opus-4.8']);
+
+        function initModelCheckboxes() {
+            const container = document.getElementById('modelCheckboxes');
+            container.innerHTML = CONFIG.models.map(model => `
+                <label class="checkbox-item ${selectedModels.has(model.id) ? 'checked' : ''}" data-model="${model.id}">
+                    <input type="checkbox" ${selectedModels.has(model.id) ? 'checked' : ''} onchange="toggleModel('${model.id}', this.checked)">
+                    <span>${model.name}</span>
+                    ${model.badge ? `<span class="badge ${model.badge === 'NEW' ? 'new' : ''}">${model.badge}</span>` : ''}
+                </label>
+            `).join('');
+        }
+
+        function toggleModel(modelId, checked) {
+            const item = document.querySelector(`[data-model="${modelId}"]`);
+            if (checked) {
+                selectedModels.add(modelId);
+                item.classList.add('checked');
+            } else {
+                selectedModels.delete(modelId);
+                item.classList.remove('checked');
+            }
+        }
+
+        function loadPreset(key) {
+            if (!key || !presets[key]) return;
+            document.getElementById('systemPrompt').value = presets[key].system;
+            document.getElementById('userPrompt').value = presets[key].user;
+        }
+
+        async function runComparison() {
+            const systemPrompt = document.getElementById('systemPrompt').value.trim();
+            const userPrompt = document.getElementById('userPrompt').value.trim();
+            
+            if (!userPrompt) {
+                alert('Please enter a user message');
+                return;
+            }
+
+            if (selectedModels.size === 0) {
+                alert('Please select at least one model');
+                return;
+            }
+
+            const container = document.getElementById('responsesContainer');
+            container.innerHTML = '';
+
+            const btn = document.getElementById('sendBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+
+            const modelsToRun = CONFIG.models.filter(m => selectedModels.has(m.id));
+
+            // Create cards for each model
+            modelsToRun.forEach(model => {
+                const card = document.createElement('div');
+                card.className = 'response-card';
+                card.id = `response-${model.id.replace(/[.:]/g, '-')}`;
+                card.innerHTML = `
+                    <div class="response-header">
+                        <span class="model-name">${model.name}</span>
+                        <span class="stats" id="stats-${model.id.replace(/[.:]/g, '-')}">Loading...</span>
+                    </div>
+                    <div class="response-body loading">⏳ Waiting for response...</div>
+                `;
+                container.appendChild(card);
+            });
+
+            // Run all models in parallel
+            const promises = modelsToRun.map(model => callModel(model, systemPrompt, userPrompt));
+            await Promise.allSettled(promises);
+
+            btn.disabled = false;
+            btn.textContent = '⚡ Compare Models';
+        }
+
+        async function callModel(model, systemPrompt, userPrompt) {
+            const cardId = `response-${model.id.replace(/[.:]/g, '-')}`;
+            const card = document.getElementById(cardId);
+            const body = card.querySelector('.response-body');
+            const stats = document.getElementById(`stats-${model.id.replace(/[.:]/g, '-')}`);
+
+            const startTime = Date.now();
+
+            try {
+                // In production, this calls the Cloudflare Worker
+                // For demo, we'll show a placeholder
+                const response = await fetch(CONFIG.workerUrl + '/invoke', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        modelId: model.id,
+                        messages: [
+                            { role: 'user', content: userPrompt }
+                        ],
+                        system: systemPrompt,
+                        max_tokens: 1024
+                    })
+                });
+
+                const elapsed = Date.now() - startTime;
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+                
+                body.classList.remove('loading');
+                body.textContent = data.content || data.output?.message?.content?.[0]?.text || JSON.stringify(data);
+                
+                const tokens = data.usage?.output_tokens || '?';
+                stats.textContent = `${elapsed}ms | ${tokens} tokens`;
+
+                // Check for Fable 5 fallback
+                if (model.id === 'anthropic.claude-fable-5' && data.fallback) {
+                    const notice = document.createElement('div');
+                    notice.className = 'fallback-notice';
+                    notice.textContent = '⚠️ Response fell back to Opus 4.8 due to safeguards';
+                    body.appendChild(notice);
+                }
+
+            } catch (err) {
+                body.classList.remove('loading');
+                body.classList.add('error');
+                
+                if (CONFIG.workerUrl.includes('yourdomain')) {
+                    body.textContent = '⚙️ Worker not configured yet.\n\nTo enable:\n1. Deploy the Cloudflare Worker\n2. Update CONFIG.workerUrl in this file';
+                } else {
+                    body.textContent = `Error: ${err.message}`;
+                }
+                
+                stats.textContent = 'Failed';
+            }
+        }
+
+        // Initialize
+        initModelCheckboxes();
+    </script>
+</body>
+</html>
