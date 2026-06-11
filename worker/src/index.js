@@ -138,6 +138,181 @@ export default {
       }
     }
 
+    // Also support /v1/models for discovery
+    if (url.pathname === '/v1/models' && request.method === 'GET') {
+      const models = {
+        object: 'list',
+        data: [
+          { id: 'us.anthropic.claude-fable-5', object: 'model', created: 1717977600, owned_by: 'anthropic' },
+          { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', object: 'model', created: 1715817600, owned_by: 'anthropic' },
+          { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', object: 'model', created: 1729555200, owned_by: 'anthropic' },
+          { id: 'us.anthropic.claude-3-haiku-20240307-v1:0', object: 'model', created: 1709769600, owned_by: 'anthropic' },
+        ]
+      };
+      return new Response(JSON.stringify(models), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // OpenAI-compatible endpoint for Cline and other tools
+    if (url.pathname === '/v1/chat/completions' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const { model, messages, max_tokens = 4096, temperature, stream = false } = body;
+
+        if (stream) {
+          return new Response(JSON.stringify({ error: 'Streaming not yet supported' }), {
+            status: 501,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Map model names - allow shortcuts
+        let modelId = model;
+        const modelAliases = {
+          'claude-fable-5': 'us.anthropic.claude-fable-5',
+          'fable-5': 'us.anthropic.claude-fable-5',
+          'claude-sonnet-4': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+          'sonnet-4': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+          'claude-3.5-sonnet': 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
+          'claude-3-haiku': 'us.anthropic.claude-3-haiku-20240307-v1:0',
+        };
+        if (modelAliases[model]) {
+          modelId = modelAliases[model];
+        }
+
+        const region = env.AWS_REGION || 'us-east-1';
+        
+        const aws = new AwsClient({
+          accessKeyId: env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+          sessionToken: env.AWS_SESSION_TOKEN,
+          region: region,
+          service: 'bedrock'
+        });
+
+        const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/converse`;
+        
+        // Convert OpenAI messages to Bedrock Converse format
+        // Extract system message if present
+        let systemMessage = null;
+        const conversationMessages = [];
+        
+        for (const msg of messages) {
+          if (msg.role === 'system') {
+            systemMessage = msg.content;
+          } else {
+            conversationMessages.push({
+              role: msg.role,
+              content: [{ text: msg.content }]
+            });
+          }
+        }
+        
+        const converseBody = {
+          messages: conversationMessages,
+          inferenceConfig: {
+            maxTokens: max_tokens
+          }
+        };
+        
+        if (temperature !== undefined) {
+          converseBody.inferenceConfig.temperature = temperature;
+        }
+        
+        if (systemMessage) {
+          converseBody.system = [{ text: systemMessage }];
+        }
+        
+        const startTime = Date.now();
+        const response = await aws.fetch(bedrockUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(converseBody)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          // Return OpenAI-style error
+          return new Response(JSON.stringify({ 
+            error: {
+              message: `Bedrock error: ${errorText}`,
+              type: 'api_error',
+              code: response.status
+            }
+          }), {
+            status: response.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        const result = await response.json();
+        const latencyMs = Date.now() - startTime;
+        
+        // Extract text content
+        let textContent = '';
+        const contentBlocks = result.output?.message?.content || [];
+        
+        for (const block of contentBlocks) {
+          if (block.text) {
+            textContent += block.text;
+          }
+        }
+        
+        // Map stop reason to OpenAI format
+        const stopReasonMap = {
+          'end_turn': 'stop',
+          'stop_sequence': 'stop',
+          'max_tokens': 'length',
+          'tool_use': 'tool_calls'
+        };
+        
+        // Return OpenAI-compatible response
+        const openAIResponse = {
+          id: `chatcmpl-${Date.now()}`,
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: modelId,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: textContent
+            },
+            finish_reason: stopReasonMap[result.stopReason] || 'stop'
+          }],
+          usage: {
+            prompt_tokens: result.usage?.inputTokens || 0,
+            completion_tokens: result.usage?.outputTokens || 0,
+            total_tokens: (result.usage?.inputTokens || 0) + (result.usage?.outputTokens || 0)
+          },
+          // Extra metadata
+          _bedrock: {
+            latency_ms: latencyMs,
+            original_model: modelId
+          }
+        };
+
+        return new Response(JSON.stringify(openAIResponse), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+      } catch (error) {
+        console.error('OpenAI-compat error:', error);
+        return new Response(JSON.stringify({ 
+          error: {
+            message: error.message,
+            type: 'internal_error'
+          }
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     return new Response('Not found', { status: 404, headers: corsHeaders });
   }
 };
