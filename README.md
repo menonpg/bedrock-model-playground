@@ -166,11 +166,17 @@ Use our Cloudflare Worker as an OpenAI-compatible endpoint:
   "cline.apiProvider": "openai-compatible",
   "cline.openaiBaseUrl": "https://bedrock-proxy.prahlad-menon.workers.dev",
   "cline.openaiApiKey": "not-needed",
-  "cline.modelId": "us.anthropic.claude-fable-5"
+  "cline.modelId": "fable-5"
 }
 ```
 
-> **Note:** The worker currently uses the Converse API format, not OpenAI format. For Cline, direct Bedrock is recommended.
+**Supported model aliases:**
+- `fable-5` or `claude-fable-5` → `us.anthropic.claude-fable-5`
+- `sonnet-4` or `claude-sonnet-4` → `us.anthropic.claude-sonnet-4-20250514-v1:0`
+- `claude-3.5-sonnet` → `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
+- `claude-3-haiku` → `us.anthropic.claude-3-haiku-20240307-v1:0`
+
+Or use full inference profile IDs directly.
 
 ---
 
@@ -182,13 +188,52 @@ Use our Cloudflare Worker as an OpenAI-compatible endpoint:
 curl https://bedrock-proxy.prahlad-menon.workers.dev/health
 ```
 
-### Invoke Model
+### OpenAI-Compatible Endpoint (NEW)
+
+**POST /v1/chat/completions** - Works with Cline, LangChain, and any OpenAI-compatible client:
+
+```bash
+curl -X POST https://bedrock-proxy.prahlad-menon.workers.dev/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "fable-5",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ],
+    "max_tokens": 1024
+  }'
+```
+
+**Response (OpenAI format):**
+```json
+{
+  "id": "chatcmpl-1781188524330",
+  "object": "chat.completion",
+  "created": 1781188524,
+  "model": "us.anthropic.claude-fable-5",
+  "choices": [{
+    "index": 0,
+    "message": {"role": "assistant", "content": "Hello! How can I help you today?"},
+    "finish_reason": "stop"
+  }],
+  "usage": {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
+}
+```
+
+**GET /v1/models** - List available models:
+
+```bash
+curl https://bedrock-proxy.prahlad-menon.workers.dev/v1/models
+```
+
+### Native Invoke Endpoint
 
 ```bash
 curl -X POST https://bedrock-proxy.prahlad-menon.workers.dev/invoke \
   -H "Content-Type: application/json" \
   -d '{
-    "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "modelId": "us.anthropic.claude-fable-5",
     "messages": [{"role": "user", "content": "Hello!"}],
     "system": "You are a helpful assistant.",
     "max_tokens": 1024
@@ -201,7 +246,7 @@ curl -X POST https://bedrock-proxy.prahlad-menon.workers.dev/invoke \
   "content": "Hello! How can I help you today?",
   "usage": {"inputTokens": 12, "outputTokens": 8, "totalTokens": 20},
   "stop_reason": "end_turn",
-  "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  "model": "us.anthropic.claude-fable-5"
 }
 ```
 
