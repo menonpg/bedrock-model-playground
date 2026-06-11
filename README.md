@@ -2,7 +2,8 @@
 
 **Interactive demo for comparing AWS Bedrock foundation models**
 
-Live Demo: [TBD - GitHub Pages URL after deployment]
+🌐 **Live Demo:** https://menonpg.github.io/bedrock-model-playground/  
+⚡ **API Proxy:** https://bedrock-proxy.prahlad-menon.workers.dev/
 
 ---
 
@@ -23,34 +24,36 @@ Designed to support **Medimergent/Grace Phase 1** model selection and ongoing mo
 ```
 ┌────────────────────┐     ┌──────────────────────────┐     ┌─────────────────┐
 │  GitHub Pages UI   │────▶│  Cloudflare Worker       │────▶│  AWS Bedrock    │
-│  (Static HTML/JS)  │     │  (API Proxy + Auth)      │     │  (Models)       │
+│  (Static HTML/JS)  │     │  (API Proxy + AWS Auth)  │     │  (Models)       │
 └────────────────────┘     └──────────────────────────┘     └─────────────────┘
 ```
 
 - **Frontend**: Pure HTML/JS, no build step, hosted on GitHub Pages
-- **Worker**: Cloudflare Worker handles AWS SigV4 signing, keeps credentials secure
-- **Backend**: AWS Bedrock `InvokeModel` / `Converse` API
+- **Worker**: Cloudflare Worker handles AWS SigV4 signing via `aws4fetch`, keeps credentials secure
+- **Backend**: AWS Bedrock **Converse API** (works with inference profiles)
 
 ---
 
 ## Supported Models (June 2026)
 
+> ⚠️ **Important:** Models must be called using their **inference profile IDs**, not raw model IDs.  
+> Bedrock no longer requires manual model activation — models are auto-enabled on first invoke.
+
 ### Anthropic Claude Family
 
-| Model | Model ID | Context | Pricing (per 1M tokens) | Notes |
-|-------|----------|---------|------------------------|-------|
-| **Claude Fable 5** | `anthropic.claude-fable-5` | 200K | $10 in / $50 out | **NEW** - Mythos-class, safeguards enabled |
-| Claude Opus 4.8 | `anthropic.claude-opus-4.8` | 200K | $15 in / $75 out | Flagship, no fallback restrictions |
-| Claude Opus 4.7 | `anthropic.claude-opus-4.7` | 200K | $15 in / $75 out | Previous generation |
-| Claude Haiku 4.5 | `anthropic.claude-haiku-4.5` | 200K | $0.80 in / $4 out | Fast, cost-efficient |
+| Model | Inference Profile ID | Context | Pricing (per 1M tokens) | Notes |
+|-------|---------------------|---------|------------------------|-------|
+| **Claude Fable 5** | `us.anthropic.claude-fable-5` | 200K | $10 in / $50 out | **NEW** - Mythos-class, safeguards enabled |
+| Claude Opus 4.8 | `us.anthropic.claude-opus-4-8` | 200K | $15 in / $75 out | Flagship, no fallback restrictions |
+| Claude Haiku 4.5 | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | 200K | $0.80 in / $4 out | Fast, cost-efficient |
 
 ### Other Bedrock Models
 
-| Model | Model ID | Pricing (per 1M tokens) |
-|-------|----------|------------------------|
-| Amazon Titan Text | `amazon.titan-text-premier-v1:0` | $0.50 in / $1.50 out |
-| Meta Llama 3.1 70B | `meta.llama3-1-70b-instruct-v1:0` | $2.65 in / $3.50 out |
-| Mistral Large | `mistral.mistral-large-2407-v1:0` | $4 in / $12 out |
+| Model | Inference Profile ID | Pricing (per 1M tokens) |
+|-------|---------------------|------------------------|
+| Llama 4 Maverick 17B | `us.meta.llama4-maverick-17b-instruct-v1:0` | $0.22 in / $0.88 out |
+| Llama 4 Scout 17B | `us.meta.llama4-scout-17b-instruct-v1:0` | $0.22 in / $0.88 out |
+| DeepSeek R1 | `us.deepseek.r1-v1:0` | Varies |
 
 ---
 
@@ -73,19 +76,16 @@ Fable 5 includes **safety classifiers** that detect potential misuse. When trigg
 
 This affects <5% of sessions. Users are notified when fallback occurs.
 
-### Bedrock Requirements
+### ⚠️ Data Retention Requirement for Fable 5
 
-To use Fable 5 via Bedrock, you **must** opt into data sharing:
+**Claude Fable 5 requires data retention mode opt-in before first use.**
 
-```bash
-# Set data retention (required before first invoke)
-curl -X PUT https://bedrock.us-east-1.amazonaws.com/data-retention \
-  -H "Authorization: Bearer <your_bearer_token>" \
-  -H "Content-Type: application/json" \
-  -d '{ "mode": "provider_data_share" }'
+If you get this error:
+```
+The model returned the following errors: data retention mode 'default' is not available for this model
 ```
 
-Anthropic requires **30-day input/output retention** + human review capability for abuse detection.
+You need to enable `provider_data_share` mode in the AWS Bedrock console or via API. Anthropic requires 30-day input/output retention + human review capability for abuse detection.
 
 ### Fable 5 vs Mythos 5
 
@@ -95,6 +95,39 @@ Anthropic requires **30-day input/output retention** + human review capability f
 | Safeguards | Enabled (falls back to Opus 4.8) | Some safeguards lifted |
 | Use case | General enterprise use | Cyber defense, critical infrastructure |
 | Pricing | $10/$50 per 1M tokens | Same |
+
+---
+
+## API Usage
+
+### Health Check
+
+```bash
+curl https://bedrock-proxy.prahlad-menon.workers.dev/health
+```
+
+### Invoke Model
+
+```bash
+curl -X POST https://bedrock-proxy.prahlad-menon.workers.dev/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "system": "You are a helpful assistant.",
+    "max_tokens": 1024
+  }'
+```
+
+**Response:**
+```json
+{
+  "content": "Hello! How can I help you today?",
+  "usage": {"inputTokens": 12, "outputTokens": 8, "totalTokens": 20},
+  "stop_reason": "end_turn",
+  "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+```
 
 ---
 
@@ -108,37 +141,46 @@ For the Medimergent/Grace project, we're evaluating models on:
 4. **Conversation continuity** - Maintains context across multi-turn dialogues
 5. **Tone calibration** - Adjusts formality based on patient communication style
 
-### Test Prompts
+### Pre-built Test Scenarios
 
-The playground includes pre-built test scenarios for:
-- Anxious patient asking about test results
-- Confused elderly patient needing medication guidance
-- Frustrated patient with insurance questions
-- Caregiver asking on behalf of family member
+The playground includes:
+- **Anxious patient** - Test results anxiety
+- **Confused elderly** - Medication guidance
+- **Frustrated patient** - Insurance issues
+- **Caregiver** - Asking on behalf of family member
+- **Technical** - Detailed medical questions
 
 ---
 
-## Setup
+## Setup (Self-Hosting)
 
 ### 1. Deploy Cloudflare Worker
 
 ```bash
 cd worker
 npm install
-cp wrangler.toml.example wrangler.toml
-# Edit wrangler.toml with your AWS credentials
+
+# Set secrets (use temporary session credentials or permanent IAM user)
+wrangler secret put AWS_ACCESS_KEY_ID
+wrangler secret put AWS_SECRET_ACCESS_KEY
+wrangler secret put AWS_SESSION_TOKEN  # Only if using temporary credentials
+
 npx wrangler deploy
 ```
 
-### 2. Configure GitHub Pages
+### 2. Configure Frontend
 
-1. Fork this repo
-2. Go to Settings → Pages → Enable from `main` branch
-3. Update `config.js` with your Worker URL
+Update `index.html`:
+```javascript
+const CONFIG = {
+    workerUrl: 'https://your-worker.your-domain.workers.dev',
+    models: [...]
+};
+```
 
-### 3. AWS IAM Setup
+### 3. AWS IAM Requirements
 
-Create an IAM user/role with:
+Create an IAM user/role with Bedrock invoke permissions:
 
 ```json
 {
@@ -150,23 +192,38 @@ Create an IAM user/role with:
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "arn:aws:bedrock:*::foundation-model/*"
+      "Resource": "*"
     }
   ]
 }
 ```
 
+> **Note:** Bedrock model access is now auto-enabled on first invoke. No manual activation required.
+
 ---
 
-## Development
+## Important Notes
+
+### Inference Profiles vs Model IDs
+
+Bedrock requires using **inference profile IDs** (e.g., `us.anthropic.claude-haiku-4-5-20251001-v1:0`) rather than raw model IDs (e.g., `anthropic.claude-3-5-haiku-20241022-v1:0`).
+
+List available inference profiles:
+```bash
+aws bedrock list-inference-profiles --query "inferenceProfileSummaries[*].inferenceProfileId"
+```
+
+### Credential Rotation
+
+If using temporary credentials (SSO/assumed role), the session token expires (typically 12 hours). You'll need to refresh the secrets:
 
 ```bash
-# Local development (frontend only)
-npx serve .
-
-# Worker development
-cd worker && npx wrangler dev
+wrangler secret put AWS_ACCESS_KEY_ID
+wrangler secret put AWS_SECRET_ACCESS_KEY
+wrangler secret put AWS_SESSION_TOKEN
 ```
+
+For production, consider using a permanent IAM user with minimal permissions.
 
 ---
 
@@ -180,9 +237,8 @@ cd worker && npx wrangler dev
 ## References
 
 - [Anthropic: Claude Fable 5 and Mythos 5 Announcement](https://www.anthropic.com/news/claude-fable-5-mythos-5)
-- [AWS Blog: Claude Fable 5 on Bedrock](https://aws.amazon.com/blogs/aws/anthropic-claude-fable-5-on-aws-mythos-class-capabilities-with-built-in-safeguards-now-available/)
-- [Claude on Amazon Bedrock Docs](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock)
-- [System Card](https://anthropic.com/claude-fable-5-mythos-5-system-card)
+- [AWS Bedrock Converse API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html)
+- [AWS: Model Access Retirement Notice](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) - Models now auto-enabled on first invoke
 
 ---
 
