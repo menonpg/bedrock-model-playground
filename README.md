@@ -76,16 +76,45 @@ Fable 5 includes **safety classifiers** that detect potential misuse. When trigg
 
 This affects <5% of sessions. Users are notified when fallback occurs.
 
-### ⚠️ Data Retention Requirement for Fable 5
+### ⚠️ Data Retention Requirement for Fable 5 (CRITICAL)
 
-**Claude Fable 5 requires data retention mode opt-in before first use.**
+**Claude Fable 5 requires `provider_data_share` mode opt-in at the AWS ACCOUNT level before first use.**
 
 If you get this error:
 ```
 The model returned the following errors: data retention mode 'default' is not available for this model
 ```
 
-You need to enable `provider_data_share` mode in the AWS Bedrock console or via API. Anthropic requires 30-day input/output retention + human review capability for abuse detection.
+**Fix:** Run this command (one-time, per AWS account):
+
+```bash
+# Using curl with AWS SigV4 signing
+curl -X PUT https://bedrock.us-east-1.amazonaws.com/data-retention \
+  --aws-sigv4 "aws:amz:us-east-1:bedrock" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "X-Amz-Security-Token: $AWS_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "mode": "provider_data_share" }'
+```
+
+**Response:**
+```json
+{"mode":"provider_data_share","updatedAt":"2026-06-11T13:53:44.268Z"}
+```
+
+**Important notes:**
+- There is **NO console UI** for this setting — API only
+- This is an **account-wide** setting, not per-request
+- Anthropic requires 30-day input/output retention for abuse detection
+- Data is NOT used for model training
+
+**Verify current setting:**
+```bash
+curl https://bedrock.us-east-1.amazonaws.com/data-retention \
+  --aws-sigv4 "aws:amz:us-east-1:bedrock" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "X-Amz-Security-Token: $AWS_SESSION_TOKEN"
+```
 
 ### Fable 5 vs Mythos 5
 
@@ -95,6 +124,53 @@ You need to enable `provider_data_share` mode in the AWS Bedrock console or via 
 | Safeguards | Enabled (falls back to Opus 4.8) | Some safeguards lifted |
 | Use case | General enterprise use | Cyber defense, critical infrastructure |
 | Pricing | $10/$50 per 1M tokens | Same |
+
+---
+
+## Using Fable 5 in Cline (VS Code Extension)
+
+To use Claude Fable 5 with the Cline VS Code extension:
+
+### Option 1: Via AWS Bedrock (Recommended)
+
+1. **Enable data retention** (see above — required one-time)
+
+2. **Configure Cline settings** (`settings.json`):
+```json
+{
+  "cline.apiProvider": "bedrock",
+  "cline.awsRegion": "us-east-1",
+  "cline.awsAccessKeyId": "YOUR_ACCESS_KEY",
+  "cline.awsSecretAccessKey": "YOUR_SECRET_KEY",
+  "cline.awsSessionToken": "YOUR_SESSION_TOKEN",  // if using SSO
+  "cline.modelId": "us.anthropic.claude-fable-5"
+}
+```
+
+3. **Or use AWS CLI profile:**
+```json
+{
+  "cline.apiProvider": "bedrock",
+  "cline.awsProfile": "608380991622_PowerUserAccess",
+  "cline.awsRegion": "us-east-1",
+  "cline.modelId": "us.anthropic.claude-fable-5"
+}
+```
+
+### Option 2: Via OpenAI-Compatible Proxy
+
+Use our Cloudflare Worker as an OpenAI-compatible endpoint:
+
+```json
+{
+  "cline.apiProvider": "openai-compatible",
+  "cline.openaiBaseUrl": "https://bedrock-proxy.prahlad-menon.workers.dev",
+  "cline.openaiApiKey": "not-needed",
+  "cline.modelId": "us.anthropic.claude-fable-5"
+}
+```
+
+> **Note:** The worker currently uses the Converse API format, not OpenAI format. For Cline, direct Bedrock is recommended.
 
 ---
 
@@ -154,13 +230,36 @@ The playground includes:
 
 ## Setup (Self-Hosting)
 
-### 1. Deploy Cloudflare Worker
+### Prerequisites
+
+- AWS account with Bedrock access
+- Cloudflare account (for Worker)
+- Node.js 18+
+
+### 1. Enable Data Retention for Fable 5
+
+```bash
+# Set your AWS credentials
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_SESSION_TOKEN="your-token"  # if using SSO
+
+# Enable provider_data_share (required for Fable 5)
+curl -X PUT https://bedrock.us-east-1.amazonaws.com/data-retention \
+  --aws-sigv4 "aws:amz:us-east-1:bedrock" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "X-Amz-Security-Token: $AWS_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "mode": "provider_data_share" }'
+```
+
+### 2. Deploy Cloudflare Worker
 
 ```bash
 cd worker
 npm install
 
-# Set secrets (use temporary session credentials or permanent IAM user)
+# Set secrets
 wrangler secret put AWS_ACCESS_KEY_ID
 wrangler secret put AWS_SECRET_ACCESS_KEY
 wrangler secret put AWS_SESSION_TOKEN  # Only if using temporary credentials
@@ -168,7 +267,7 @@ wrangler secret put AWS_SESSION_TOKEN  # Only if using temporary credentials
 npx wrangler deploy
 ```
 
-### 2. Configure Frontend
+### 3. Configure Frontend
 
 Update `index.html`:
 ```javascript
@@ -178,7 +277,7 @@ const CONFIG = {
 };
 ```
 
-### 3. AWS IAM Requirements
+### 4. AWS IAM Requirements
 
 Create an IAM user/role with Bedrock invoke permissions:
 
@@ -225,6 +324,23 @@ wrangler secret put AWS_SESSION_TOKEN
 
 For production, consider using a permanent IAM user with minimal permissions.
 
+### Fable 5 Response Format
+
+Fable 5 may include `reasoningContent` blocks in its response alongside text. The worker extracts only the user-facing text content. Example raw response structure:
+
+```json
+{
+  "output": {
+    "message": {
+      "content": [
+        {"reasoningContent": {"reasoningText": {"signature": "...", "text": ""}}},
+        {"text": "Actual response text here"}
+      ]
+    }
+  }
+}
+```
+
 ---
 
 ## Related Projects
@@ -238,6 +354,7 @@ For production, consider using a permanent IAM user with minimal permissions.
 
 - [Anthropic: Claude Fable 5 and Mythos 5 Announcement](https://www.anthropic.com/news/claude-fable-5-mythos-5)
 - [AWS Bedrock Converse API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html)
+- [AWS: Data Retention API](https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html) - Required for Fable 5
 - [AWS: Model Access Retirement Notice](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) - Models now auto-enabled on first invoke
 
 ---
