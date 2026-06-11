@@ -99,12 +99,30 @@ export default {
 
         const result = await response.json();
         
+        // Extract text content from Converse API response
+        // Fable 5 may include reasoningContent blocks alongside text blocks
+        // We need to find the actual text content, not the reasoning signature
+        let textContent = '';
+        const contentBlocks = result.output?.message?.content || [];
+        
+        for (const block of contentBlocks) {
+          if (block.text) {
+            // Direct text block
+            textContent += block.text;
+          } else if (block.reasoningContent?.reasoningText?.text) {
+            // Reasoning block with text (Fable 5 extended thinking)
+            // This is internal reasoning, we might want to include or skip
+            // For now, skip it as it's usually empty or internal
+          }
+        }
+        
         // Normalize Converse API response
         const normalizedResponse = {
-          content: result.output?.message?.content?.[0]?.text || '',
+          content: textContent,
           usage: result.usage,
           stop_reason: result.stopReason,
-          model: modelId
+          model: modelId,
+          latency_ms: result.metrics?.latencyMs
         };
 
         return new Response(JSON.stringify(normalizedResponse), {
