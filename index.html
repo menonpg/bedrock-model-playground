@@ -404,34 +404,34 @@
     <script>
         // Configuration - UPDATE THIS after deploying the Cloudflare Worker
         const CONFIG = {
-            workerUrl: 'https://bedrock-proxy.yourdomain.workers.dev', // TODO: Update
+            workerUrl: 'https://bedrock-proxy.prahlad-menon.workers.dev',
             models: [
                 {
-                    id: 'anthropic.claude-fable-5',
+                    id: 'us.anthropic.claude-fable-5',
                     name: 'Claude Fable 5',
                     badge: 'NEW',
                     pricing: '$10 in / $50 out',
                     note: 'Mythos-class with safeguards'
                 },
                 {
-                    id: 'anthropic.claude-opus-4.8',
+                    id: 'us.anthropic.claude-opus-4-8',
                     name: 'Claude Opus 4.8',
                     badge: null,
                     pricing: '$15 in / $75 out',
                     note: 'Flagship model'
                 },
                 {
-                    id: 'anthropic.claude-haiku-4.5',
+                    id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
                     name: 'Claude Haiku 4.5',
                     badge: null,
                     pricing: '$0.80 in / $4 out',
                     note: 'Fast & cost-efficient'
                 },
                 {
-                    id: 'meta.llama3-1-70b-instruct-v1:0',
-                    name: 'Llama 3.1 70B',
+                    id: 'us.meta.llama4-maverick-17b-instruct-v1:0',
+                    name: 'Llama 4 Maverick 17B',
                     badge: null,
-                    pricing: '$2.65 in / $3.50 out',
+                    pricing: '$0.22 in / $0.88 out',
                     note: 'Meta open weights'
                 }
             ]

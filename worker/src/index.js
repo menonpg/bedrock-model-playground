@@ -71,7 +71,8 @@ export default {
           env.AWS_REGION || 'us-east-1',
           modelId,
           bedrockBody,
-          isAnthropic
+          isAnthropic,
+          env.AWS_SESSION_TOKEN
         );
 
         return new Response(JSON.stringify(bedrockResponse), {
@@ -91,8 +92,25 @@ export default {
   }
 };
 
+// URI encode per RFC 3986 (required for SigV4)
+function uriEncode(str, encodeSlash = true) {
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || 
+        (ch >= '0' && ch <= '9') || ch === '_' || ch === '-' || ch === '~' || ch === '.') {
+      result += ch;
+    } else if (ch === '/' && !encodeSlash) {
+      result += ch;
+    } else {
+      result += '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
+    }
+  }
+  return result;
+}
+
 // AWS SigV4 signing and Bedrock invocation
-async function invokeBedrockModel(accessKeyId, secretAccessKey, region, modelId, body, isAnthropic) {
+async function invokeBedrockModel(accessKeyId, secretAccessKey, region, modelId, body, isAnthropic, sessionToken) {
   const service = 'bedrock';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   
@@ -102,7 +120,14 @@ async function invokeBedrockModel(accessKeyId, secretAccessKey, region, modelId,
                     modelId.includes('claude-haiku-4');
   
   const effectiveModelId = useGlobal ? `global.${modelId}` : modelId;
-  const path = `/model/${encodeURIComponent(effectiveModelId)}/invoke`;
+  
+  // For the HTTP request: use raw model ID (let fetch() encode it)
+  const rawPath = `/model/${effectiveModelId}/invoke`;
+  
+  // For the canonical request URI: encode ourselves to match what AWS will receive
+  // AWS receives the encoded version because fetch() will encode the URL
+  const encodedModelId = uriEncode(effectiveModelId, true);
+  const canonicalUri = `/model/${encodedModelId}/invoke`;
   
   const bodyString = JSON.stringify(body);
   const datetime = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
@@ -110,17 +135,21 @@ async function invokeBedrockModel(accessKeyId, secretAccessKey, region, modelId,
 
   // Create canonical request
   const method = 'POST';
-  const canonicalUri = path;
   const canonicalQuerystring = '';
   
   const payloadHash = await sha256Hex(bodyString);
   
   const headers = {
-    'content-type': isAnthropic ? 'application/json' : 'application/json',
+    'content-type': 'application/json',
     'host': host,
     'x-amz-date': datetime,
     'x-amz-content-sha256': payloadHash
   };
+  
+  // Add session token header if using temporary credentials
+  if (sessionToken) {
+    headers['x-amz-security-token'] = sessionToken;
+  }
   
   const signedHeaders = Object.keys(headers).sort().join(';');
   const canonicalHeaders = Object.keys(headers)
@@ -157,8 +186,8 @@ async function invokeBedrockModel(accessKeyId, secretAccessKey, region, modelId,
   // Create authorization header
   const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  // Make the request
-  const response = await fetch(`https://${host}${path}`, {
+  // Make the request with raw path - fetch() will encode it for us
+  const response = await fetch(`https://${host}${rawPath}`, {
     method: 'POST',
     headers: {
       ...headers,
